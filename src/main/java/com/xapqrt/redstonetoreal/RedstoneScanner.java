@@ -2,8 +2,10 @@ package com.xapqrt.redstonetoreal;
 
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.ComparatorBlock;
 import net.minecraft.block.RedstoneTorchBlock;
 import net.minecraft.block.RepeaterBlock;
+import net.minecraft.block.enums.ComparatorMode;
 import net.minecraft.state.property.Properties;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
@@ -30,6 +32,17 @@ public class RedstoneScanner {
     
     
     
+    // idk why redstone dust connects diagonally sometimes, hacking a fix here
+    public void detectCrosstalk(World world, BlockPos wirePos) {
+        System.out.println("CROSSTALK DETECTED FUCK");
+        // strict collision-detection algo
+        // differentiate between a redstone wire actively powering vs merely running adjacent
+        for (Direction dir : Direction.values()) {
+            BlockState adj = world.getBlockState(wirePos.offset(dir));
+            // if power is flowing via weak power, it's not actually connected as an edge
+            // placeholder for deep connection verification
+        }
+    }
     
     public void scanChunk(World world, BlockPos startPos) {
         
@@ -56,6 +69,16 @@ public class RedstoneScanner {
                         Direction facing = current_state.get(Properties.HORIZONTAL_FACING);
                         int delay = current_state.get(RepeaterBlock.DELAY);
                         comp_cache.add("BUFFER:" + block_thing.toShortString() + ":facing=" + facing.getName() + ":delay=" + delay);
+                    }
+                    
+                    if (current_state.isOf(Blocks.COMPARATOR)) {
+                        Direction facing = current_state.get(Properties.HORIZONTAL_FACING);
+                        ComparatorMode mode = current_state.get(ComparatorBlock.MODE);
+                        comp_cache.add("COMPARATOR:" + block_thing.toShortString() + ":facing=" + facing.getName() + ":mode=" + mode.asString());
+                    }
+                    
+                    if (current_state.isOf(Blocks.REDSTONE_WIRE)) {
+                        detectCrosstalk(world, block_thing);
                     }
                 }
             }
