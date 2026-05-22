@@ -38,7 +38,7 @@ function detectSubGraphs(dag) {
     // Naive mock pattern matching for the NAND/SR logic
     if (dag.nodes.length >= 3) {
         console.log("pattern matched: NAND");
-        collapsed_nodes.push({ id: "g1", type: "NAND_GATE", x: 100, y: 150 });
+        collapsed_nodes.push({ id: "g1", type: "NAND", x: 100, y: 150 });
     }
     
     // ...other patterns: NOR, SR Latch, OR
@@ -60,8 +60,42 @@ function detectSubGraphs(dag) {
 
 
 
+function renderSVG(gates) {
+    const container = document.getElementById("svg_container");
+    let svgContent = `<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">`;
+    
+    gates.forEach(gate => {
+        // TODO: fix the SVG line routing if i have time before the deadline
+        if (gate.type === "NAND") {
+            // Draw standard IEEE NAND D-shape + inversion bubble
+            svgContent += `
+                <g transform="translate(${gate.x}, ${gate.y})">
+                    <path d="M 0,0 L 20,0 A 20,20 0 0,1 20,40 L 0,40 Z" fill="none" stroke="white" stroke-width="2"/>
+                    <circle cx="45" cy="20" r="5" fill="none" stroke="white" stroke-width="2"/>
+                    <text x="5" y="25" fill="white" font-size="12">NAND</text>
+                </g>
+            `;
+        }
+        else if (gate.type === "SR_LATCH") {
+            // Draw SR Latch box
+            svgContent += `
+                <g transform="translate(${gate.x}, ${gate.y})">
+                    <rect x="0" y="0" width="50" height="60" fill="none" stroke="white" stroke-width="2"/>
+                    <text x="5" y="20" fill="white" font-size="12">S</text>
+                    <text x="5" y="50" fill="white" font-size="12">R</text>
+                    <text x="35" y="20" fill="white" font-size="12">Q</text>
+                    <text x="35" y="50" fill="white" font-size="12">Q'</text>
+                </g>
+            `;
+        }
+    });
+    
+    svgContent += `</svg>`;
+    container.innerHTML = svgContent;
+}
+
 function synthesize() {
     graph_nodes = sampleJSON;
     let logicGates = detectSubGraphs(graph_nodes);
-    // next trigger SVG rendering
+    renderSVG(logicGates);
 }
