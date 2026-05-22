@@ -23,6 +23,7 @@ public class RedstoneScanner {
     // logic components
     public List<String> comp_cache = new ArrayList<>();
     
+    public String graph_nodes = "{\"nodes\":[], \"edges\":[]}";
     
     
     
@@ -42,6 +43,17 @@ public class RedstoneScanner {
             // if power is flowing via weak power, it's not actually connected as an edge
             // placeholder for deep connection verification
         }
+    }
+    
+    public String exportDAG() {
+        // TODO: actually populate this from comp_cache and wire data
+        // For now, dumping static json skeleton
+        return "{\n" +
+               "  \"nodes\": [\n" +
+               "    {\"id\": \"t1\", \"type\": \"NOT_GATE\", \"pos\": \"[10, 64, 10]\"}\n" +
+               "  ],\n" +
+               "  \"edges\": []\n" +
+               "}";
     }
     
     public void scanChunk(World world, BlockPos startPos) {
@@ -83,5 +95,7 @@ public class RedstoneScanner {
                 }
             }
         }
+        
+        graph_nodes = exportDAG();
     }
 }
