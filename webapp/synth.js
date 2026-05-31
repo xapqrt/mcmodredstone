@@ -179,3 +179,57 @@ function synthesize() {
     let logicGates = detectSubGraphs(graph_nodes);
     renderSVG(logicGates);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function generateCPP() {
+    console.log("Transpiling DAG to C++ Arudino code...");
+
+    let cpp = `// Auto-generated from Readstone-to-Real\n\n`;
+    cpp += `void setup() {\n`;}
+    cpp += `  Serial.begin(9600);\n`;
+
+
+    let pinCounter = 2; 
+    if (graph_nodes && graph_nodes.nodes) {
+        let inputs = graph_nodes.nodes.filter(n => n.type === "INPUT");
+        inputs.forEach((inp, idx) => {
+            cpp += `  pinMode(${pinCounter + idx}, INPUT_PULLUP);\n`;
+        });
+    }
+    
+    cpp += `}\n\n`;
+    cpp += `void loop() {\n`;
+
+
+
+    cpp += `  // evaluate inputs and  outputs via mapped gates\n`;
+    cpp += ` bool out = false;\n`;
+
+    if(collapsed_nodes && collapsed_nodes.length > 0) {
+        collapsed_nodes.forEach(gn => {
+            cpp += `
+        });
+    }
+
+    cpp += `}\n`;
+
+    document.getElementById("cpp_out").innerText = cpp;
+        }
