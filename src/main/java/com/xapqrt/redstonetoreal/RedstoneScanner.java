@@ -63,19 +63,63 @@ public class RedstoneScanner {
                 // it hits a component
                 System.out.println("wire hit a component at " + adjacent_thing);
                 valid_edges.add(wirePos.toShortString() + "->" + adjacent_thing.toShortString());
+            } else if (adj.isOf(Blocks.REDSTONE_BLOCK) || adj.isOf(Blocks.LEVER)) {
+                // tracing backwards from power source
+                valid_edges.add(adjacent_thing.toShortString() + "->" + wirePos.toShortString());
             }
         }
     }
     
+    // I am losing my mind over Java string building
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    public String buildJSON() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\n  \"nodes\": [\n");
+        // populate nodes from components and inputs
+        
+        for (int i = 0; i < comp_cache.size(); i++) {
+            String c = comp_cache.get(i);
+            String[] parts = c.split(":");
+            sb.append("    {\"id\": \"").append(parts[1]).append("\", \"type\": \"").append(parts[0]).append("\"}");
+            if (i < comp_cache.size() - 1 || raw_inputs.size() > 0) sb.append(",\n");
+        }
+
+
+     for  (int i = 0; i < raw_inputs.size(); i++) {
+       sb.append("    {\"id\": \"").append(raw_inputs.get(i).toShortString()).append("\", \"type\": \"INPUT\"}");
+       if (i < raw_inputs.size() - 1) sb.append(",\n");
+     }
+
+
+        sb.append("\n  ],\n  \"edges\": [\n");
+        
+        for (int i = 0; i < valid_edges.size(); i++) {
+            String[] e = valid_edges.get(i).split("->");
+            sb.append("    {\"from\": \"").append(e[0]).append("\", \"to\": \"").append(e[1]).append("\"}");
+            if (i < valid_edges.size() - 1) sb.append(",\n");
+        }
+        sb.append("\n  ]\n}");
+        return sb.toString();
+    }
+    
     public String exportDAG() {
-        // TODO: actually populate this from comp_cache and wire data
-        // For now, dumping static json skeleton
-        return "{\n" +
-               "  \"nodes\": [\n" +
-               "    {\"id\": \"t1\", \"type\": \"NOT_GATE\", \"pos\": \"[10, 64, 10]\"}\n" +
-               "  ],\n" +
-               "  \"edges\": []\n" +
-               "}";
+        // dynamically populate this from comp_cache and wire data
+        return buildJSON();
     }
     
     public void scanChunk(World world, BlockPos startPos) {
