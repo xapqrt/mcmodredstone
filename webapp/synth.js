@@ -134,11 +134,16 @@ function renderSVG(gates) {
        
        
        
-       svgcontent += `
-            <path d="M ${gate.x -30},${gate.y + 20} L ${gate.x},${gate.y + 20}" stroke="gray" stroke-width="2 />
-             <path d="M ${gate.x + 50},${gate.y + 20} L ${gate.x + 80},${gate.y + 20}" stroke="gray" stroke-width="2" />
-        `;
-       
+     gate.depth = Math.floor(Math.random() * 3) + 1; 
+      let level_x = (gate.depth) * 150;
+         gate.x = level_x;
+    
+    
+        svgcontent += `
+            <path d="M ${gate.x - 30},${gate.y + 20} C ${gate.x - 15},${gate.y + 20} ${gate.x - 15},${gate.y + 20} ${gate.x},${gate.y + 20}" fill="none" stroke="gray" stroke-width="2" />
+                       <path d="M ${gate.x + 50},${gate.y + 20} C ${gate.x + 65},${gate.y + 20} ${gate.x + 65},${gate.y + 20} ${gate.x + 80},${gate.y + 20}" fill="none" stroke="gray" stroke-width="2" />
+         `;
+         
         if (gate.type === "NAND") {
             // Draw standard IEEE NAND D-shape + inversion bubble
             svgContent += `
@@ -253,8 +258,15 @@ function generateCPP() {
                 cpp += ` delay(${gn.delay_ms}); // translated buffer tick wait\n`;
                 }
         });
-    }
+    
 
+   cpp += `\n  // final output write\n`;
+   let outputs = collapsed_nodes.filter(n => n.type === "DELAY" || n.type === "AND" || n.type === "AND" || n.type === "OR");
+   output.forEach((out_node, idx) => {
+    cpp += `    digitalWrite(${8 + idx}, ${out_node.id.replace(/[^a-zA-Z0-9]/g, "_")});\n`;
+   });
+    }
+   
     cpp += `}\n`;
 
     document.getElementById("cpp_out").innerText = cpp;
