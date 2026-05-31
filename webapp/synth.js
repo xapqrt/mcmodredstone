@@ -49,7 +49,7 @@ function detectSubGraphs(dag) {
 
 
 
-    
+
   
   
     let noteGates = dag.nodes.filter(n.type === "NOT_GATE");
@@ -242,7 +242,16 @@ function generateCPP() {
 
     if(collapsed_nodes && collapsed_nodes.length > 0) {
         collapsed_nodes.forEach(gn => {
-            cpp += `
+            cpp += ` // processing ${gn.type} gate at ${gn.id}\n`;
+               if(gn.type === "AND") {
+             cpp += ` bool ${gn.id.replace(/[^a-zA-Z0-9]/g, '_')} = input_A && input_B; // hardcoded inputs for now ugh\n`;
+               } else if (gn.type === "NOT") {
+                cpp += ` bool ${gn.id.replace(/[^a-zA-Z0-9]/g, '_')} = !input_X;\n`;
+                } else if (gn.type === "OR") {
+                cpp += ` bool ${gn.id.replace(/[^a-zA-Z0-9]/g, '_')} = input_A || input_B;\n`;
+                } else if (gn.type === "DELAY") {
+                cpp += ` delay(${gn.delay_ms}); // translated buffer tick wait\n`;
+                }
         });
     }
 
