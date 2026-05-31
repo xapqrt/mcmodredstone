@@ -35,7 +35,55 @@ function detectSubGraphs(dag) {
     
     collapsed_nodes = [];
     
-    // Naive mock pattern matching for the NAND/SR logic
+   let noteGates = dag.nodes.filter(n.type === "NOT_GATE");
+   console.log(`Found ${notGates.length} potenial NOT gates`);
+   
+   
+   
+   
+   let and_counter = 0;
+   let or_counter = 0;
+   
+   
+   if(dag.nodes.some(n => n.type === "COMPRATOR" && dag.edges.length > 2)) {
+   collapsed_nodes.push({ id: "g_" + and_counter++, type: "AND", x: 150, y: 50});
+   console.log("pattern matched: AND");
+   }
+   
+   
+   let targetCounts = {};
+   dag.edges.forEach(e => {
+    targetCounts[e.to] = (targetCounts[e.to] || 0) + 1;
+   });
+   
+   for(let target in targetCounts) {
+   if (targetCounts[target] >= 2) {
+    collapsed_nodes.push({ id: "g_" + or_counter++, type: "OR", x: 200, y: 100});
+   console.log("pattern matched: OR");
+   }
+}
+   
+  
+let not_counter = 0;
+
+
+ notGates.forEach(ng => {
+
+   let isIsolated = !dag.edges.some(e => e.to === ng.id && targetCounts[ng.id] > 1 );
+    if (isIsolated) {
+        collapsed_nodes.push({ id: "g_not_" + not_counter++, type: "NOT", x: 50, y: 250});
+    console.log("pattern matched: NOT");
+    }
+ });
+
+//NOR = OR + NOT
+
+if (or_counter > 0 && not_counter > 0) {
+    collapsed_nodes.push({ id: "g_nor_1", type: "NOR", x: 250, y: 200});
+      console.log("pattern matched: NOR");
+}
+
+// Naive mock pattern matching for the NAND/SR logic
     if (dag.nodes.length >= 3) {
         console.log("pattern matched: NAND");
         collapsed_nodes.push({ id: "g1", type: "NAND", x: 100, y: 150 });
@@ -66,6 +114,14 @@ function renderSVG(gates) {
     
     gates.forEach(gate => {
         // TODO: fix the SVG line routing if i have time before the deadline
+       
+       
+       
+       svgcontent += `
+            <path d="M ${gate.x -30},${gate.y + 20} L ${gate.x},${gate.y + 20}" stroke="gray" stroke-width="2 />
+             <path d="M ${gate.x + 50},${gate.y + 20} L ${gate.x + 80},${gate.y + 20}" stroke="gray" stroke-width="2" />
+        `;
+       
         if (gate.type === "NAND") {
             // Draw standard IEEE NAND D-shape + inversion bubble
             svgContent += `
@@ -86,6 +142,30 @@ function renderSVG(gates) {
                     <text x="35" y="20" fill="white" font-size="12">Q</text>
                     <text x="35" y="50" fill="white" font-size="12">Q'</text>
                 </g>
+            `;
+        }
+            else if (gate.type === "AND") {
+            svgContent += `
+                <g transform="translate(${gate.x}, ${gate.y})">
+                 <path d="M 0,0 L 25,0 A 25,20 0 0,1 25,40 L 0,40 Z" fill="none" stroke="white" stroke-width="2"/>
+                <text x="5" y="25" fill="white" font-size="12">AND</text>
+                </g>
+            `;
+        }
+        else if (gate.type === "OR") {
+            svgContent += `
+                <g transform="translate(${gate.x}, ${gate.y})">
+                  <path d="M 0,0 Q 15,20 0,40 Q 25,40 40,20 Q 25,0 0,0" fill="none" stroke="white" stroke-width="2"/>
+                    <text x="10" y="25" fill="white" font-size="12">OR</text>
+                </g>  
+            `;
+        }
+        else if (gate.type === "NOT") {
+            svgContent += `
+                <g transform="translate(${gate.x}, ${gate.y})">
+               <polygon points="0,0 30,20 0,40" fill="none" stroke="white" stroke-width="2"/>
+                    <circle cx="35" cy="20" r="5" fill="none" stroke="white" stroke-width="2"/>
+           </g>
             `;
         }
     });
