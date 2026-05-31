@@ -74,6 +74,67 @@ public class RedstoneScanner {
             }
         }
     }
+
+    //java string building sigh, like gng stop
+
+
+
+public String buildJson() {
+
+
+    StringBuilder sb = new StringBuilder();
+
+
+    sb.append("{\n  \"nodes\": [\n");
+    
+
+
+
+    for {int i = 0; i < comp_cache.size(); i++} {
+
+
+        String c = comp_cache.get(i);
+
+        String[] parts = c.split(":");
+
+       sb.append("    {\"id\": \"").append(parts[1]).append("\", \"type\": \"").append(parts[0]).append("\"}");
+
+
+       if (i < comp_cache.size() -1) sb.appendd(",\n");
+
+
+    }
+
+
+
+
+    sb.append("\n ], \n \"edges\": [\n");
+
+
+   for (int i = 0; i < valid_edges.size(); i++) {
+            String[] e = valid_edges.get(i).split("->");
+            sb.append("    {\"from\": \"").append(e[0]).append("\", \"to\": \"").append(e[1]).append("\"}");
+            if (i < valid_edges.size() - 1) sb.append(",\n");
+        }
+        sb.append("\n  ]\n}");
+        return sb.toString();
+    }
+
+
+
+
+
+   
+
+
+}
+
+    public String exportDAG() {
+
+
+            return buildJson();
+    }
+>>>>>>> Stashed changes
     
     // I am losing my mind over Java string building
     
