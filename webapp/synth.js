@@ -129,21 +129,36 @@ function renderSVG(gates) {
     const container = document.getElementById("svg_container");
     let svgContent = `<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">`;
     
+    
+    let depth_tracker = {};
+    
     gates.forEach(gate => {
         // TODO: fix the SVG line routing if i have time before the deadline
        
        
        
-     gate.depth = Math.floor(Math.random() * 3) + 1; 
-      let level_x = (gate.depth) * 150;
-         gate.x = level_x;
     
     
+    let in_degree = 0;
+     if( graph_nodes && graph_nodes.edges) {
+     in_degree = graph_nodes.edges.filter(e => e.to === gate.id).length;
+     }
+       gate_depth = in_degree;
+    
+      let leve_x = (gate.depth) * 150 + 50;
+        gate.x = level_x;
+    
+    
+      if (!depth_tracker[gate.depth]) { depth_tracker[gate.depth] = 0; }
+         gate.y = depth_tracker[gate.depth] * 80 + 50;      
+        depth_tracker[gate.depth]++;
+      
+      
         svgcontent += `
             <path d="M ${gate.x - 30},${gate.y + 20} C ${gate.x - 15},${gate.y + 20} ${gate.x - 15},${gate.y + 20} ${gate.x},${gate.y + 20}" fill="none" stroke="gray" stroke-width="2" />
                        <path d="M ${gate.x + 50},${gate.y + 20} C ${gate.x + 65},${gate.y + 20} ${gate.x + 65},${gate.y + 20} ${gate.x + 80},${gate.y + 20}" fill="none" stroke="gray" stroke-width="2" />
          `;
-         
+
         if (gate.type === "NAND") {
             // Draw standard IEEE NAND D-shape + inversion bubble
             svgContent += `
