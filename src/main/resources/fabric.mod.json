@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "redstone_to_real",
+  "version": "${version}",
+  "name": "Redstone to Real",
+  "description": "3D Spatial Database Crawler to find logic gates and make them C++",
+  "authors": [
+    "xapqrt"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/redstone_to_real/icon.png",
+  "environment": "*",
+  "entrypoints": {},
+  "depends": {
+    "fabricloader": ">=0.14.21",
+    "minecraft": "1.20"
+  }
+}
