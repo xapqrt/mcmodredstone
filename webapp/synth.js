@@ -35,7 +35,24 @@ function detectSubGraphs(dag) {
     
     collapsed_nodes = [];
     
-   let noteGates = dag.nodes.filter(n.type === "NOT_GATE");
+  
+  // 1 redstone tick = 100ms
+  let buffers = dag.nodes.filter(n => n.type === "BUFFER");
+  buffers.forEach((b, idk) => {
+  let delay = (parseInt(b.delay) || 1) * 100;
+  console.log(`calculated delay $(delay_ms) ms for buffer ${b.id}`);
+  collapsed_nodes.push({ id: b.id, type: "DELAY", delay_ms: delay_ms, x: 100, y: 150 + (idk * 50)});
+    });
+  
+  
+
+
+
+
+    
+  
+  
+    let noteGates = dag.nodes.filter(n.type === "NOT_GATE");
    console.log(`Found ${notGates.length} potenial NOT gates`);
    
    
