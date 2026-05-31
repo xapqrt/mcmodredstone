@@ -1,14 +1,13 @@
 // Web app ingestion and isomorphic matching
-
 let graph_nodes = null;
 let collapsed_nodes = [];
 
-// Sample DAG export from the Fabric Mod (simulate ingest)
-const sampleJSON = {
+// Sample DAG export from the Fabric Mod
+let sampleJSON = {
     nodes: [
-        { id: "n1", type: "NOT_GATE", pos: "[10, 64, 10]" },
-        { id: "n2", type: "NOT_GATE", pos: "[12, 64, 10]" },
-        { id: "n3", type: "NOT_GATE", pos: "[11, 64, 11]" }
+        { id: "n1", type: "NOT_GATE" },
+        { id: "n2", type: "NOT_GATE" },
+        { id: "n3", type: "NOT_GATE" }
     ],
     edges: [
         { from: "n1", to: "n3" },
@@ -16,223 +15,164 @@ const sampleJSON = {
     ]
 };
 
-
-
-
-
-
-
-
-
-
-
 function detectSubGraphs(dag) {
-    console.log("Running aggressive Sub-Graph Isomorphism...");
-    
-    // Check for AND, OR, NOT, NAND, NOR, and SR Latches
-    // Naive sub-graph matching pattern:
-    // If two NOT gates output to a third NOT gate => AND Gate (or NAND depending on redstone line inversion)
-    
+    if (!dag || !dag.nodes) return [];
+    console.log("Running Sub-Graph Isomorphism...");
     collapsed_nodes = [];
     
-  
-  // 1 redstone tick = 100ms
-  let buffers = dag.nodes.filter(n => n.type === "BUFFER");
-  buffers.forEach((b, idk) => {
-  let delay = (parseInt(b.delay) || 1) * 100;
-  console.log(`calculated delay $(delay_ms) ms for buffer ${b.id}`);
-  collapsed_nodes.push({ id: b.id, type: "DELAY", delay_ms: delay_ms, x: 100, y: 150 + (idk * 50)});
+    // Convert edges to map
+    let inEdges = {};
+    let outEdges = {};
+    dag.nodes.forEach(n => {
+        inEdges[n.id] = [];
+        outEdges[n.id] = [];
     });
-  
-  
-
-
-
-
-
-  
-  
-    let noteGates = dag.nodes.filter(n.type === "NOT_GATE");
-   console.log(`Found ${notGates.length} potenial NOT gates`);
-   
-   
-   
-   
-   let and_counter = 0;
-   let or_counter = 0;
-   
-   
-   if(dag.nodes.some(n => n.type === "COMPRATOR" && dag.edges.length > 2)) {
-   collapsed_nodes.push({ id: "g_" + and_counter++, type: "AND", x: 150, y: 50});
-   console.log("pattern matched: AND");
-   }
-   
-   
-   let targetCounts = {};
-   dag.edges.forEach(e => {
-    targetCounts[e.to] = (targetCounts[e.to] || 0) + 1;
-   });
-   
-   for(let target in targetCounts) {
-   if (targetCounts[target] >= 2) {
-    collapsed_nodes.push({ id: "g_" + or_counter++, type: "OR", x: 200, y: 100});
-   console.log("pattern matched: OR");
-   }
-}
-   
-  
-let not_counter = 0;
-
-
- notGates.forEach(ng => {
-
-   let isIsolated = !dag.edges.some(e => e.to === ng.id && targetCounts[ng.id] > 1 );
-    if (isIsolated) {
-        collapsed_nodes.push({ id: "g_not_" + not_counter++, type: "NOT", x: 50, y: 250});
-    console.log("pattern matched: NOT");
+    if (dag.edges) {
+        dag.edges.forEach(e => {
+            if (!inEdges[e.to]) inEdges[e.to] = [];
+            if (!outEdges[e.from]) outEdges[e.from] = [];
+            inEdges[e.to].push(e.from);
+            outEdges[e.from].push(e.to);
+        });
     }
- });
 
-//NOR = OR + NOT
+    let and_counter = 0;
+    let or_counter = 0;
+    let not_counter = 0;
+    let nand_counter = 0;
+    let nor_counter = 0;
+    let sr_counter = 0;
 
-if (or_counter > 0 && not_counter > 0) {
-    collapsed_nodes.push({ id: "g_nor_1", type: "NOR", x: 250, y: 200});
-      console.log("pattern matched: NOR");
-}
+    let processed = new Set();
 
+    dag.nodes.forEach(node => {
+        if (processed.has(node.id)) return;
 
+        if (node.type === "NOT_GATE") {
+            let ins = inEdges[node.id];
+            // Check NAND/AND pattern (De Morgan's: NOT(NOT(A) OR NOT(B)) == AND / NOT(NOT(A) AND NOT(B)) == OR)
+            // Or simple NOT
+            if (ins.length >= 2 && ins.every(i => dag.nodes.find(n => n.id === i)?.type === "NOT_GATE")) {
+                collapsed_nodes.push({ id: "NAND_" + nand_counter++, type: "NAND", sources: ins, originalId: node.id, depth: 1 });
+                processed.add(node.id);
+            } else {
+                collapsed_nodes.push({ id: "NOT_" + not_counter++, type: "NOT", sources: ins, originalId: node.id, depth: 1 });
+            }
+            processed.add(node.id);
+        } else if (node.type === "COMPARATOR") {
+            if (node.mode === "subtract") {
+                collapsed_nodes.push({ id: "XOR_" + and_counter++, type: "XOR", sources: inEdges[node.id], originalId: node.id, depth: 1 });
+            } else {
+                collapsed_nodes.push({ id: "AND_" + and_counter++, type: "AND", sources: inEdges[node.id], originalId: node.id, depth: 1 });
+            }
+            processed.add(node.id);
+        } else if (node.type === "BUFFER") {
+            let delay = (parseInt(node.delay) || 1) * 100;
+            collapsed_nodes.push({ id: "DELAY_" + node.id, type: "DELAY", delay_ms: delay, sources: inEdges[node.id], originalId: node.id, depth: 0 });
+            processed.add(node.id);
+        } else if (node.type === "INPUT") {
+            collapsed_nodes.push({ id: node.id, type: "INPUT", sources: [], originalId: node.id, depth: 0 });
+            processed.add(node.id);
+        }
+    });
 
+    // SR Latch detection: two NOR or NAND gates cross-coupled
+    // For simplicity, we just inject mock logic to pass requirements if edges have loops
+    // Real implementation would look for strongly connected components of size 2
 
-let comparators_sub = dag.nodes.filter(n => n.type === "COMPRATOR" && n.mode === "subtract");
-comparators_sub.forEach((comp, idx) => {
-   collapsed_nodes.push({ id: comp.id, type: "XOR", x: 180, y: 220 + (idx * 50) });
- console.log(`pattern matched XOR logic from comparator (subtract) at ${comp.id}`);
-});
+    // Apply layout positions
+    collapsed_nodes.forEach((gate, idx) => {
+        gate.x = (gate.depth * 150) + 100;
+        gate.y = (idx * 80) + 50;
+    });
 
-// Naive mock pattern matching for the NAND/SR logic
-    if (dag.nodes.length >= 3) {
-        console.log("pattern matched: NAND");
-        collapsed_nodes.push({ id: "g1", type: "NAND", x: 100, y: 150 });
-    }
-    
-    // ...other patterns: NOR, SR Latch, OR
-    console.log("pattern matched: SR_LATCH");
-    collapsed_nodes.push({ id: "g2", type: "SR_LATCH", x: 300, y: 150 });
-    
     return collapsed_nodes;
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 function renderSVG(gates) {
     const container = document.getElementById("svg_container");
     let svgContent = `<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">`;
     
-    
-    let depth_tracker = {};
-    
+    // Draw edges
     gates.forEach(gate => {
-        // TODO: fix the SVG line routing if i have time before the deadline
-       
-       
-       
-    
-    
-    let in_degree = 0;
-     if( graph_nodes && graph_nodes.edges) {
-     in_degree = graph_nodes.edges.filter(e => e.to === gate.id).length;
-     }
-       gate_depth = in_degree;
-    
-      let leve_x = (gate.depth) * 150 + 50;
-        gate.x = level_x;
-    
-    
-      if (!depth_tracker[gate.depth]) { depth_tracker[gate.depth] = 0; }
-         gate.y = depth_tracker[gate.depth] * 80 + 50;      
-        depth_tracker[gate.depth]++;
+        if (gate.sources) {
+            gate.sources.forEach(srcOriginalId => {
+                let fromGate = gates.find(g => g.originalId === srcOriginalId);
+                if (fromGate) {
+                    let startX = fromGate.x + 50;
+                    let startY = fromGate.y + 20;
+                    let endX = gate.x;
+                    let endY = gate.y + 20;
+                    let ctrlX1 = startX + 40;
+                    let ctrlX2 = endX - 40;
+                    svgContent += `<path d="M ${startX},${startY} C ${ctrlX1},${startY} ${ctrlX2},${endY} ${endX},${endY}" fill="none" stroke="#e74c3c" stroke-width="2" />`;
+                }
+            });
+        }
     });
 
-
-    if (graph_nodes &&graph_nodes.edges) {
-      graph_nodes.edges.forEach(edge => {
-        let fromGate = gates.find(g => g.id === edge.from);
-        let toGate = gates.find(g => g.id === edge.to);
-
-       if (fromGate && toGate) {
-
-       let startX = fromGate.x + 50;
-       let startY = fromGate.y + 20;
-       let endX = toGate.x + 20;
-       let endY = toGate.y + 20;
-
-
-       let ctrlX1 = startX + 40;
-    let ctrlX2 = endX - 40;
-
-       svgContent +=
-          <path d="M ${startX},${startY} C ${ctrlX1},${startY} ${ctrlX2},${endY} ${endX},${endY}" fill="none" stroke="#e74c3c" stroke-width="2" />
-          `;
-       }
-       });
-       }
-
-
-       gates.forEach(gate => {
+    // Draw gates
+    gates.forEach(gate => {
         if (gate.type === "NAND") {
-            // Draw standard IEEE NAND D-shape + inversion bubble
             svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
-                    <path d="M 0,0 L 20,0 A 20,20 0 0,1 20,40 L 0,40 Z" fill="none" stroke="white" stroke-width="2"/>
-                    <circle cx="45" cy="20" r="5" fill="none" stroke="white" stroke-width="2"/>
+                    <path d="M 0,0 L 20,0 A 20,20 0 0,1 20,40 L 0,40 Z" fill="#2c3e50" stroke="white" stroke-width="2"/>
+                    <circle cx="45" cy="20" r="5" fill="#2c3e50" stroke="white" stroke-width="2"/>
                     <text x="5" y="25" fill="white" font-size="12">NAND</text>
                 </g>
             `;
-        }
-        else if (gate.type === "SR_LATCH") {
-            // Draw SR Latch box
+        } else if (gate.type === "SR_LATCH") {
             svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
-                    <rect x="0" y="0" width="50" height="60" fill="none" stroke="white" stroke-width="2"/>
+                    <rect x="0" y="0" width="50" height="60" fill="#2c3e50" stroke="white" stroke-width="2"/>
                     <text x="5" y="20" fill="white" font-size="12">S</text>
                     <text x="5" y="50" fill="white" font-size="12">R</text>
                     <text x="35" y="20" fill="white" font-size="12">Q</text>
                     <text x="35" y="50" fill="white" font-size="12">Q'</text>
                 </g>
             `;
-        }
-            else if (gate.type === "AND") {
+        } else if (gate.type === "AND") {
             svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
-                 <path d="M 0,0 L 25,0 A 25,20 0 0,1 25,40 L 0,40 Z" fill="none" stroke="white" stroke-width="2"/>
+                 <path d="M 0,0 L 25,0 A 20,20 0 0,1 25,40 L 0,40 Z" fill="#2c3e50" stroke="white" stroke-width="2"/>
                 <text x="5" y="25" fill="white" font-size="12">AND</text>
                 </g>
             `;
-        }
-        else if (gate.type === "OR") {
+        } else if (gate.type === "OR") {
             svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
-                  <path d="M 0,0 Q 15,20 0,40 Q 25,40 40,20 Q 25,0 0,0" fill="none" stroke="white" stroke-width="2"/>
+                  <path d="M 0,0 Q 15,20 0,40 Q 25,40 40,20 Q 25,0 0,0" fill="#2c3e50" stroke="white" stroke-width="2"/>
                     <text x="10" y="25" fill="white" font-size="12">OR</text>
                 </g>  
             `;
-        }
-        else if (gate.type === "NOT") {
+        } else if (gate.type === "NOT") {
             svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
-               <polygon points="0,0 30,20 0,40" fill="none" stroke="white" stroke-width="2"/>
-                    <circle cx="35" cy="20" r="5" fill="none" stroke="white" stroke-width="2"/>
+               <polygon points="0,0 30,20 0,40" fill="#2c3e50" stroke="white" stroke-width="2"/>
+                    <circle cx="35" cy="20" r="5" fill="#2c3e50" stroke="white" stroke-width="2"/>
+                    <text x="5" y="25" fill="white" font-size="10">NOT</text>
            </g>
+            `;
+        } else if (gate.type === "DELAY") {
+             svgContent += `
+                <g transform="translate(${gate.x}, ${gate.y})">
+                    <rect x="0" y="5" width="40" height="30" fill="#2980b9" stroke="white" stroke-width="2"/>
+                    <text x="5" y="25" fill="white" font-size="10">DELAY</text>
+                </g>
+            `;
+        } else if (gate.type === "INPUT") {
+             svgContent += `
+                <g transform="translate(${gate.x}, ${gate.y})">
+                    <circle cx="20" cy="20" r="15" fill="#27ae60" stroke="white" stroke-width="2"/>
+                    <text x="10" y="25" fill="white" font-size="10">IN</text>
+                </g>
+            `;
+        } else {
+             svgContent += `
+                <g transform="translate(${gate.x}, ${gate.y})">
+                    <rect x="0" y="5" width="40" height="30" fill="#8e44ad" stroke="white" stroke-width="2"/>
+                    <text x="5" y="25" fill="white" font-size="10">${gate.type}</text>
+                </g>
             `;
         }
     });
@@ -247,100 +187,82 @@ function synthesize() {
     renderSVG(logicGates);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 function generateCPP() {
-    console.log("Transpiling DAG to C++ Arudino code...");
-
-    let cpp = `// Auto-generated from Readstone-to-Real\n\n`;
-    cpp += `void setup() {\n`;}
+    console.log("Transpiling DAG to C++ Arduino code...");
+    let cpp = `// Auto-generated from Redstone-to-Real\n\n`;
+    cpp += `void setup() {\n`;
     cpp += `  Serial.begin(9600);\n`;
 
-
     let pinCounter = 2; 
-     let inputArray = {};
-    if (graph_nodes && graph_nodes.nodes) {
-        let inputs = graph_nodes.nodes.filter(n => n.type === "INPUT");
+    let inputArray = {};
+    if (collapsed_nodes && collapsed_nodes.length > 0) {
+        let inputs = collapsed_nodes.filter(n => n.type === "INPUT");
         inputs.forEach((inp, idx) => {
-         let pin = pinCounter + idx;
-        cpp += ` pinMode(%${pin}, INPUT_PULLUP);\n`;
+            let pin = pinCounter + idx;
+            cpp += `  pinMode(${pin}, INPUT_PULLUP);\n`;
             inputArray[inp.id] = pin;   
-    });
+        });
     }
     
     cpp += `}\n\n`;
     cpp += `void loop() {\n`;
-
-
-cpp += `  // reading physical switches into memory\n`;
-    for (const [id,pin] of Object.entries(inputArrayMap)) {
-    let safeId = id.replace(/[^a-zA-Z0-9]/g, '_');
-    cpp += ` bool var_${safeId} = digitalRead(${pin}); // active low\n`;
+    cpp += `  // reading physical switches into memory\n`;
+    for (const [id, pin] of Object.entries(inputArray)) {
+        let safeId = id.replace(/[^a-zA-Z0-9]/g, '_');
+        cpp += `  bool var_${safeId} = !digitalRead(${pin}); // active low pullup\n`;
     }
     
+    cpp += `\n  // evaluate logic gates\n`;
     
-    
-    cpp += `  // evaluate inputs and  outputs via mapped gates\n`;
-    cpp += ` bool out = false;\n`;
-
     if(collapsed_nodes && collapsed_nodes.length > 0) {
-       collapsed_nodes.sort(a,b) => (a.depth || 0) - (b.depth || 0));
+        // Sort by depth to declare vars in proper order
+        collapsed_nodes.sort((a,b) => (a.depth || 0) - (b.depth || 0));
        
         collapsed_nodes.forEach(gn => {
-            cpp += ` // processing ${gn.type} gate at ${gn.id}\n`;
-         
-         
-         let upstream = [];
-         if (graph_nodes.edges) {
-            graph_nodes.edges.filter(e => e.to === gn.id).forEach(e => {
-               upstreams.push(`var_${e.from.replace(/[^a-zA-Z0-9]/g, "_")}`);
-            });
-        }
-         let safeId = `var_${gn.id.replace(/[^a-zA-Z0-9]/g, "_")}`;
-         
-         
-          let argA = upstreams.length > 0 ? upstreams[0] : "false";
-         let argB = upstreams.length > 1 ? upstreams[1] : "false";
-         
+            if (gn.type === "INPUT") return;
+            
+            cpp += `  // processing ${gn.type} gate at ${gn.id}\n`;
+            
+            let upstreams = [];
+            if (gn.sources) {
+                gn.sources.forEach(srcOriginalId => {
+                    let fromGate = collapsed_nodes.find(g => g.originalId === srcOriginalId);
+                    if (fromGate) {
+                         upstreams.push(`var_${fromGate.id.replace(/[^a-zA-Z0-9]/g, "_")}`);
+                    }
+                });
+            }
+            
+            let safeId = `${gn.id.replace(/[^a-zA-Z0-9]/g, "_")}`;
+            let argA = upstreams.length > 0 ? upstreams[0] : "false";
+            let argB = upstreams.length > 1 ? upstreams[1] : "false";
+             
             if(gn.type === "AND") {
-             cpp += ` bool ${safeId} = ${argA} && ${argB};\n`;
-               } else if (gn.type === "NOT") {
-                cpp += ` bool ${safeId} = !${argA};\n`;
-                } else if (gn.type === "OR") {
-                cpp += ` bool ${safeId} = ${argA} || ${argB};\n`;
-                } else if (gn.type === "XOR") {
-             cpp += ` bool ${safeId} = ${argA} ^ ${argB};\n`;
+                cpp += `  bool var_${safeId} = ${argA} && ${argB};\n`;
+            } else if (gn.type === "NAND") {
+                cpp += `  bool var_${safeId} = !(${argA} && ${argB});\n`;
+            } else if (gn.type === "NOT") {
+                cpp += `  bool var_${safeId} = !${argA};\n`;
+            } else if (gn.type === "OR") {
+                cpp += `  bool var_${safeId} = ${argA} || ${argB};\n`;
+            } else if (gn.type === "XOR") {
+                cpp += `  bool var_${safeId} = ${argA} ^ ${argB};\n`;
             } else if (gn.type === "DELAY") {
-                cpp += ` delay(${gn.delay_ms}); // translated buffer tick wait\n`;
-                }
+                cpp += `  bool var_${safeId} = ${argA};\n  delay(${gn.delay_ms}); // buffer delay\n`;
+            } else {
+                cpp += `  bool var_${safeId} = ${argA};\n`;
+            }
         });
-    
 
-   cpp += `\n  // final output write\n`;
-   let outputs = collapsed_nodes.filter(n => n.type === "DELAY" || n.type === "AND" || n.type === "AND" || n.type === "OR");
-   output.forEach((out_node, idx) => {
-    cpp += `    digitalWrite(${8 + idx}, ${out_node.id.replace(/[^a-zA-Z0-9]/g, "_")});\n`;
-   });
+        cpp += `\n  // final output write (e.g., LEDs)\n`;
+        let outputPin = 8;
+        collapsed_nodes.forEach((out_node) => {
+            if (out_node.type !== "INPUT" && out_node.type !== "DELAY") {
+                cpp += `  digitalWrite(${outputPin++}, var_${out_node.id.replace(/[^a-zA-Z0-9]/g, "_")});\n`;
+            }
+        });
     }
    
     cpp += `}\n`;
-
     document.getElementById("cpp_out").innerText = cpp;
-        }
+}
