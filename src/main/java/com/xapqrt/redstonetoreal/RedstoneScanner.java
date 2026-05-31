@@ -23,6 +23,10 @@ public class RedstoneScanner {
     // logic components
     public List<String> comp_cache = new ArrayList<>();
     
+    // valid directed edges from crosstalk algo
+    public List<String> valid_edges = new ArrayList<>();
+    
+    public String graph_nodes = "{\"nodes\":[], \"edges\":[]}";
     
     
     
@@ -35,13 +39,43 @@ public class RedstoneScanner {
     // idk why redstone dust connects diagonally sometimes, hacking a fix here
     public void detectCrosstalk(World world, BlockPos wirePos) {
         System.out.println("CROSSTALK DETECTED FUCK");
+        
+        BlockState wire_state = world.getBlockState(wirePos);
+        int wire_power = wire_state.contains(Properties.POWER) ? wire_state.get(Properties.POWER) : 0;
+        
         // strict collision-detection algo
         // differentiate between a redstone wire actively powering vs merely running adjacent
         for (Direction dir : Direction.values()) {
-            BlockState adj = world.getBlockState(wirePos.offset(dir));
+            BlockPos adjacent_thing = wirePos.offset(dir);
+            BlockState adj = world.getBlockState(adjacent_thing);
+            
             // if power is flowing via weak power, it's not actually connected as an edge
             // placeholder for deep connection verification
+            if (adj.isOf(Blocks.REDSTONE_WIRE)) {
+                int adj_power = adj.contains(Properties.POWER) ? adj.get(Properties.POWER) : 0;
+                
+                // redstone goes down by 1 each block, so strict check
+                if (wire_power > adj_power) {
+                    System.out.println("power flows from " + wirePos + " -> " + adjacent_thing);
+                    // we save this valid flow to trace later
+                }
+            } else if (adj.isOf(Blocks.REPEATER) || adj.isOf(Blocks.REDSTONE_TORCH)) {
+                // it hits a component
+                System.out.println("wire hit a component at " + adjacent_thing);
+                valid_edges.add(wirePos.toShortString() + "->" + adjacent_thing.toShortString());
+            }
         }
+    }
+    
+    public String exportDAG() {
+        // TODO: actually populate this from comp_cache and wire data
+        // For now, dumping static json skeleton
+        return "{\n" +
+               "  \"nodes\": [\n" +
+               "    {\"id\": \"t1\", \"type\": \"NOT_GATE\", \"pos\": \"[10, 64, 10]\"}\n" +
+               "  ],\n" +
+               "  \"edges\": []\n" +
+               "}";
     }
     
     public void scanChunk(World world, BlockPos startPos) {
@@ -83,5 +117,7 @@ public class RedstoneScanner {
                 }
             }
         }
+        
+        graph_nodes = exportDAG();
     }
 }
