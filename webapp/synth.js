@@ -189,7 +189,6 @@ function renderSVG(gates) {
 
 
        gates.forEach(gate => {
-
         if (gate.type === "NAND") {
             // Draw standard IEEE NAND D-shape + inversion bubble
             svgContent += `
@@ -293,7 +292,7 @@ function generateCPP() {
 cpp += `  // reading physical switches into memory\n`;
     for (const [id,pin] of Object.entries(inputArrayMap)) {
     let safeId = id.replace(/[^a-zA-Z0-9]/g, '_');
-    cpp += ` bool ${safeId} = digitalRead(${pin}); // active low\n`;
+    cpp += ` bool var_${safeId} = digitalRead(${pin}); // active low\n`;
     }
     
     
@@ -302,16 +301,32 @@ cpp += `  // reading physical switches into memory\n`;
     cpp += ` bool out = false;\n`;
 
     if(collapsed_nodes && collapsed_nodes.length > 0) {
+       collapsed_nodes.sort(a,b) => (a.depth || 0) - (b.depth || 0));
+       
         collapsed_nodes.forEach(gn => {
             cpp += ` // processing ${gn.type} gate at ${gn.id}\n`;
-               if(gn.type === "AND") {
-             cpp += ` bool ${gn.id.replace(/[^a-zA-Z0-9]/g, '_')} = input_A && input_B; // hardcoded inputs for now ugh\n`;
+         
+         
+         let upstream = [];
+         if (graph_nodes.edges) {
+            graph_nodes.edges.filter(e => e.to === gn.id).forEach(e => {
+               upstreams.push(`var_${e.from.replace(/[^a-zA-Z0-9]/g, "_")}`);
+            });
+        }
+         let safeId = `var_${gn.id.replace(/[^a-zA-Z0-9]/g, "_")}`;
+         
+         
+          let argA = upstreams.length > 0 ? upstreams[0] : "false";
+         let argB = upstreams.length > 1 ? upstreams[1] : "false";
+         
+            if(gn.type === "AND") {
+             cpp += ` bool ${safeId} = ${argA} && ${argB};\n`;
                } else if (gn.type === "NOT") {
-                cpp += ` bool ${gn.id.replace(/[^a-zA-Z0-9]/g, '_')} = !input_X;\n`;
+                cpp += ` bool ${safeId} = !${argA};\n`;
                 } else if (gn.type === "OR") {
-                cpp += ` bool ${gn.id.replace(/[^a-zA-Z0-9]/g, '_')} = input_A || input_B;\n`;
+                cpp += ` bool ${safeId} = ${argA} || ${argB};\n`;
                 } else if (gn.type === "XOR") {
-             cpp += ` bool ${gn.id.replace(/[^a-zA-Z0-9]/g, '_')} = input_A ^ input_B;\n`;
+             cpp += ` bool ${safeId} = ${argA} ^ ${argB};\n`;
             } else if (gn.type === "DELAY") {
                 cpp += ` delay(${gn.delay_ms}); // translated buffer tick wait\n`;
                 }
