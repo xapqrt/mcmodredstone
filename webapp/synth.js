@@ -100,6 +100,15 @@ if (or_counter > 0 && not_counter > 0) {
       console.log("pattern matched: NOR");
 }
 
+
+
+
+let comparators_sub = dag.nodes.filter(n => n.type === "COMPRATOR" && n.mode === "subtract");
+comparators_sub.forEach((comp, idx) => {
+   collapsed_nodes.push({ id: comp.id, type: "XOR", x: 180, y: 220 + (idx * 50) });
+ console.log(`pattern matched XOR logic from comparator (subtract) at ${comp.id}`);
+});
+
 // Naive mock pattern matching for the NAND/SR logic
     if (dag.nodes.length >= 3) {
         console.log("pattern matched: NAND");
