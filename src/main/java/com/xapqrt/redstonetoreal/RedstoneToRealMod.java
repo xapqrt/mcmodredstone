@@ -11,19 +11,19 @@ public class RedstoneToRealMod implements ModInitializer {
     public void onInitialize() {
         System.out.println("Redstone-to-Real Mod Initialized!");
 
-  CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
-    dispatcher.register(literal("scanredstone")
-    .executes(context -> {
-        BlockPos playerPos = context.getSource().getPlayer().getlockPos();
-        RedstoneScanner scanner = new RedstoneScanner();
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            dispatcher.register(literal("scanredstone")
+            .executes(context -> {
+                BlockPos playerPos = context.getSource().getPlayer().getBlockPos();
+                RedstoneScanner scanner = new RedstoneScanner();
 
-        context.getSource().sendFeedback(() -> Text.literal("Scanning chunks for redstone logic..."), false);
-        scanner.scanChunk(context.getSource().getWorld(), playerPos.add(-8, 0, -8));
-        scanner.saveGraphToFile();
-        context.getSource().sendFeedback(() -> Text.literal("DAG Extracted to redstone_graph.json!"), false);
+                context.getSource().sendFeedback(() -> Text.literal("Scanning chunks for redstone logic..."), false);
+                scanner.scanChunk(context.getSource().getWorld(), playerPos.add(-8, 0, -8));
+                scanner.saveGraphToFile();
+                context.getSource().sendFeedback(() -> Text.literal("DAG Extracted to redstone_graph.json!"), false);
 
-            return 1;
-    }));
-  });
-}
+                return 1;
+            }));
+        });
+    }
 }
