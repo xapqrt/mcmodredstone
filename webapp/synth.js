@@ -17,10 +17,10 @@ let sampleJSON = {
 
 function detectSubGraphs(dag) {
     if (!dag || !dag.nodes) return [];
-    console.log("Running Sub-Graph Isomorphism...");
+    console.log("Running Sub-Graph Isomorphism and Layout...");
     collapsed_nodes = [];
     
-    // Convert edges to map
+    // In edges and Out edges maps
     let inEdges = {};
     let outEdges = {};
     dag.nodes.forEach(n => {
@@ -29,18 +29,45 @@ function detectSubGraphs(dag) {
     });
     if (dag.edges) {
         dag.edges.forEach(e => {
-            if (!inEdges[e.to]) inEdges[e.to] = [];
-            if (!outEdges[e.from]) outEdges[e.from] = [];
-            inEdges[e.to].push(e.from);
-            outEdges[e.from].push(e.to);
+            let from = e.from || e.source;
+            let to = e.to || e.target;
+            if (inEdges[to] !== undefined && outEdges[from] !== undefined) {
+                inEdges[to].push(from);
+                outEdges[from].push(to);
+            }
         });
+    }
+
+    // Topological depth calculation to prevent layout overlaps and ensure correct order
+    let depths = {};
+    dag.nodes.forEach(n => {
+        depths[n.id] = 0;
+    });
+
+    // Relax paths up to 15 times to compute proper depth (handles loops safely by caching and capping)
+    for (let iter = 0; iter < 15; iter++) {
+        let changed = false;
+        if (dag.edges) {
+            dag.edges.forEach(e => {
+                let from = e.from || e.source;
+                let to = e.to || e.target;
+                if (depths[from] !== undefined && depths[to] !== undefined) {
+                    if (depths[to] <= depths[from]) {
+                        depths[to] = depths[from] + 1;
+                        changed = true;
+                    }
+                }
+            });
+        }
+        if (!changed) break;
     }
 
     let and_counter = 0;
     let or_counter = 0;
     let not_counter = 0;
     let nand_counter = 0;
-    let nor_counter = 0;
+    let delay_counter = 0;
+    let comp_counter = 0;
     let sr_counter = 0;
 
     let processed = new Set();
@@ -48,42 +75,57 @@ function detectSubGraphs(dag) {
     dag.nodes.forEach(node => {
         if (processed.has(node.id)) return;
 
-        if (node.type === "NOT_GATE") {
-            let ins = inEdges[node.id];
-            // Check NAND/AND pattern (De Morgan's: NOT(NOT(A) OR NOT(B)) == AND / NOT(NOT(A) AND NOT(B)) == OR)
-            // Or simple NOT
-            if (ins.length >= 2 && ins.every(i => dag.nodes.find(n => n.id === i)?.type === "NOT_GATE")) {
-                collapsed_nodes.push({ id: "NAND_" + nand_counter++, type: "NAND", sources: ins, originalId: node.id, depth: 1 });
-                processed.add(node.id);
-            } else {
-                collapsed_nodes.push({ id: "NOT_" + not_counter++, type: "NOT", sources: ins, originalId: node.id, depth: 1 });
-            }
+        // If the node type is already pre-collapsed by the Java backend
+        if (node.type === "AND") {
+            collapsed_nodes.push({ id: node.id, type: "AND", sources: inEdges[node.id], originalId: node.id, depth: depths[node.id] });
+            processed.add(node.id);
+        } else if (node.type === "SR_LATCH") {
+            collapsed_nodes.push({ id: node.id, type: "SR_LATCH", sources: inEdges[node.id], originalId: node.id, depth: depths[node.id] });
+            processed.add(node.id);
+        } else if (node.type === "NOT") {
+            collapsed_nodes.push({ id: node.id, type: "NOT", sources: inEdges[node.id], originalId: node.id, depth: depths[node.id] });
+            processed.add(node.id);
+        } else if (node.type === "DELAY") {
+            let delay = (parseInt(node.delay) || 1) * 100;
+            collapsed_nodes.push({ id: node.id, type: "DELAY", delay_ms: delay, sources: inEdges[node.id], originalId: node.id, depth: depths[node.id] });
             processed.add(node.id);
         } else if (node.type === "COMPARATOR") {
             if (node.mode === "subtract") {
-                collapsed_nodes.push({ id: "XOR_" + and_counter++, type: "XOR", sources: inEdges[node.id], originalId: node.id, depth: 1 });
+                collapsed_nodes.push({ id: node.id, type: "XOR", sources: inEdges[node.id], originalId: node.id, depth: depths[node.id] });
             } else {
-                collapsed_nodes.push({ id: "AND_" + and_counter++, type: "AND", sources: inEdges[node.id], originalId: node.id, depth: 1 });
+                collapsed_nodes.push({ id: node.id, type: "AND", sources: inEdges[node.id], originalId: node.id, depth: depths[node.id] });
+            }
+            processed.add(node.id);
+        } else if (node.type === "INPUT") {
+            collapsed_nodes.push({ id: node.id, type: "INPUT", sources: [], originalId: node.id, depth: depths[node.id] });
+            processed.add(node.id);
+        }
+        // Fallback checks for raw (legacy or manually uploaded raw JSONs)
+        else if (node.type === "NOT_GATE") {
+            let ins = inEdges[node.id];
+            if (ins.length >= 2 && ins.every(i => dag.nodes.find(n => n.id === i)?.type === "NOT_GATE")) {
+                collapsed_nodes.push({ id: "NAND_" + nand_counter++, type: "NAND", sources: ins, originalId: node.id, depth: depths[node.id] });
+            } else {
+                collapsed_nodes.push({ id: "NOT_" + not_counter++, type: "NOT", sources: ins, originalId: node.id, depth: depths[node.id] });
             }
             processed.add(node.id);
         } else if (node.type === "BUFFER") {
             let delay = (parseInt(node.delay) || 1) * 100;
-            collapsed_nodes.push({ id: "DELAY_" + node.id, type: "DELAY", delay_ms: delay, sources: inEdges[node.id], originalId: node.id, depth: 0 });
-            processed.add(node.id);
-        } else if (node.type === "INPUT") {
-            collapsed_nodes.push({ id: node.id, type: "INPUT", sources: [], originalId: node.id, depth: 0 });
+            collapsed_nodes.push({ id: "DELAY_" + delay_counter++, type: "DELAY", delay_ms: delay, sources: inEdges[node.id], originalId: node.id, depth: depths[node.id] });
             processed.add(node.id);
         }
     });
 
-    // SR Latch detection: two NOR or NAND gates cross-coupled
-    // For simplicity, we just inject mock logic to pass requirements if edges have loops
-    // Real implementation would look for strongly connected components of size 2
-
     // Apply layout positions
-    collapsed_nodes.forEach((gate, idx) => {
-        gate.x = (gate.depth * 150) + 100;
-        gate.y = (idx * 80) + 50;
+    let depthCounts = {};
+    collapsed_nodes.forEach(gate => {
+        let d = gate.depth || 0;
+        if (depthCounts[d] === undefined) {
+            depthCounts[d] = 0;
+        }
+        gate.x = (d * 180) + 80;
+        gate.y = (depthCounts[d] * 100) + 60;
+        depthCounts[d]++;
     });
 
     return collapsed_nodes;
@@ -97,7 +139,7 @@ function renderSVG(gates) {
     gates.forEach(gate => {
         if (gate.sources) {
             gate.sources.forEach(srcOriginalId => {
-                let fromGate = gates.find(g => g.originalId === srcOriginalId);
+                let fromGate = gates.find(g => g.id === srcOriginalId || g.originalId === srcOriginalId);
                 if (fromGate) {
                     let startX = fromGate.x + 50;
                     let startY = fromGate.y + 20;
@@ -113,65 +155,74 @@ function renderSVG(gates) {
 
     // Draw gates
     gates.forEach(gate => {
+        let label = gate.id;
         if (gate.type === "NAND") {
             svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
                     <path d="M 0,0 L 20,0 A 20,20 0 0,1 20,40 L 0,40 Z" fill="#2c3e50" stroke="white" stroke-width="2"/>
                     <circle cx="45" cy="20" r="5" fill="#2c3e50" stroke="white" stroke-width="2"/>
-                    <text x="5" y="25" fill="white" font-size="12">NAND</text>
+                    <text x="5" y="25" fill="white" font-size="10">NAND</text>
+                    <text x="0" y="-5" fill="#bdc3c7" font-size="9">${label}</text>
                 </g>
             `;
         } else if (gate.type === "SR_LATCH") {
             svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
-                    <rect x="0" y="0" width="50" height="60" fill="#2c3e50" stroke="white" stroke-width="2"/>
+                    <rect x="0" y="0" width="60" height="60" fill="#2c3e50" stroke="white" stroke-width="2"/>
                     <text x="5" y="20" fill="white" font-size="12">S</text>
                     <text x="5" y="50" fill="white" font-size="12">R</text>
-                    <text x="35" y="20" fill="white" font-size="12">Q</text>
-                    <text x="35" y="50" fill="white" font-size="12">Q'</text>
+                    <text x="45" y="20" fill="white" font-size="12">Q</text>
+                    <text x="40" y="50" fill="white" font-size="12">Q'</text>
+                    <text x="0" y="-5" fill="#bdc3c7" font-size="9">${label}</text>
                 </g>
             `;
         } else if (gate.type === "AND") {
             svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
-                 <path d="M 0,0 L 25,0 A 20,20 0 0,1 25,40 L 0,40 Z" fill="#2c3e50" stroke="white" stroke-width="2"/>
-                <text x="5" y="25" fill="white" font-size="12">AND</text>
+                    <path d="M 0,0 L 25,0 A 20,20 0 0,1 25,40 L 0,40 Z" fill="#2c3e50" stroke="white" stroke-width="2"/>
+                    <text x="5" y="25" fill="white" font-size="12">AND</text>
+                    <text x="0" y="-5" fill="#bdc3c7" font-size="9">${label}</text>
                 </g>
             `;
         } else if (gate.type === "OR") {
             svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
-                  <path d="M 0,0 Q 15,20 0,40 Q 25,40 40,20 Q 25,0 0,0" fill="#2c3e50" stroke="white" stroke-width="2"/>
+                    <path d="M 0,0 Q 15,20 0,40 Q 25,40 40,20 Q 25,0 0,0" fill="#2c3e50" stroke="white" stroke-width="2"/>
                     <text x="10" y="25" fill="white" font-size="12">OR</text>
+                    <text x="0" y="-5" fill="#bdc3c7" font-size="9">${label}</text>
                 </g>  
             `;
         } else if (gate.type === "NOT") {
             svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
-               <polygon points="0,0 30,20 0,40" fill="#2c3e50" stroke="white" stroke-width="2"/>
+                    <polygon points="0,0 30,20 0,40" fill="#2c3e50" stroke="white" stroke-width="2"/>
                     <circle cx="35" cy="20" r="5" fill="#2c3e50" stroke="white" stroke-width="2"/>
                     <text x="5" y="25" fill="white" font-size="10">NOT</text>
-           </g>
+                    <text x="0" y="-5" fill="#bdc3c7" font-size="9">${label}</text>
+                </g>
             `;
         } else if (gate.type === "DELAY") {
              svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
-                    <rect x="0" y="5" width="40" height="30" fill="#2980b9" stroke="white" stroke-width="2"/>
+                    <rect x="0" y="5" width="50" height="30" fill="#2980b9" stroke="white" stroke-width="2"/>
                     <text x="5" y="25" fill="white" font-size="10">DELAY</text>
+                    <text x="0" y="-5" fill="#bdc3c7" font-size="9">${label}</text>
                 </g>
             `;
         } else if (gate.type === "INPUT") {
              svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
                     <circle cx="20" cy="20" r="15" fill="#27ae60" stroke="white" stroke-width="2"/>
-                    <text x="10" y="25" fill="white" font-size="10">IN</text>
+                    <text x="12" y="24" fill="white" font-size="10">IN</text>
+                    <text x="0" y="-5" fill="#bdc3c7" font-size="9">${label}</text>
                 </g>
             `;
         } else {
              svgContent += `
                 <g transform="translate(${gate.x}, ${gate.y})">
-                    <rect x="0" y="5" width="40" height="30" fill="#8e44ad" stroke="white" stroke-width="2"/>
+                    <rect x="0" y="5" width="50" height="30" fill="#8e44ad" stroke="white" stroke-width="2"/>
                     <text x="5" y="25" fill="white" font-size="10">${gate.type}</text>
+                    <text x="0" y="-5" fill="#bdc3c7" font-size="9">${label}</text>
                 </g>
             `;
         }
@@ -182,7 +233,9 @@ function renderSVG(gates) {
 }
 
 function synthesize() {
-    graph_nodes = sampleJSON;
+    if (!graph_nodes) {
+        graph_nodes = sampleJSON;
+    }
     let logicGates = detectSubGraphs(graph_nodes);
     renderSVG(logicGates);
 }
@@ -215,7 +268,7 @@ function generateCPP() {
     cpp += `\n  // evaluate logic gates\n`;
     
     if(collapsed_nodes && collapsed_nodes.length > 0) {
-        // Sort by depth to declare vars in proper order
+        // Sort by depth (topological sort)
         collapsed_nodes.sort((a,b) => (a.depth || 0) - (b.depth || 0));
        
         collapsed_nodes.forEach(gn => {
@@ -225,8 +278,8 @@ function generateCPP() {
             
             let upstreams = [];
             if (gn.sources) {
-                gn.sources.forEach(srcOriginalId => {
-                    let fromGate = collapsed_nodes.find(g => g.originalId === srcOriginalId);
+                gn.sources.forEach(srcId => {
+                    let fromGate = collapsed_nodes.find(g => g.id === srcId || g.originalId === srcId);
                     if (fromGate) {
                          upstreams.push(`var_${fromGate.id.replace(/[^a-zA-Z0-9]/g, "_")}`);
                     }
@@ -249,6 +302,10 @@ function generateCPP() {
                 cpp += `  bool var_${safeId} = ${argA} ^ ${argB};\n`;
             } else if (gn.type === "DELAY") {
                 cpp += `  bool var_${safeId} = ${argA};\n  delay(${gn.delay_ms}); // buffer delay\n`;
+            } else if (gn.type === "SR_LATCH") {
+                cpp += `  static bool var_${safeId} = false; // persistent Latch state\n`;
+                cpp += `  if (${argA}) var_${safeId} = true; // Set\n`;
+                cpp += `  else if (${argB}) var_${safeId} = false; // Reset\n`;
             } else {
                 cpp += `  bool var_${safeId} = ${argA};\n`;
             }
