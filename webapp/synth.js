@@ -254,18 +254,28 @@ function generateCPP() {
 
 
     let pinCounter = 2; 
+     let inputArray = {};
     if (graph_nodes && graph_nodes.nodes) {
         let inputs = graph_nodes.nodes.filter(n => n.type === "INPUT");
         inputs.forEach((inp, idx) => {
-            cpp += `  pinMode(${pinCounter + idx}, INPUT_PULLUP);\n`;
-        });
+         let pin = pinCounter + idx;
+        cpp += ` pinMode(%${pin}, INPUT_PULLUP);\n`;
+            inputArray[inp.id] = pin;   
+    });
     }
     
     cpp += `}\n\n`;
     cpp += `void loop() {\n`;
 
 
-
+cpp += `  // reading physical switches into memory\n`;
+    for (const [id,pin] of Object.entries(inputArrayMap)) {
+    let safeId = id.replace(/[^a-zA-Z0-9]/g, '_');
+    cpp += ` bool ${safeId} = digitalRead(${pin}); // active low\n`;
+    }
+    
+    
+    
     cpp += `  // evaluate inputs and  outputs via mapped gates\n`;
     cpp += ` bool out = false;\n`;
 
@@ -278,7 +288,9 @@ function generateCPP() {
                 cpp += ` bool ${gn.id.replace(/[^a-zA-Z0-9]/g, '_')} = !input_X;\n`;
                 } else if (gn.type === "OR") {
                 cpp += ` bool ${gn.id.replace(/[^a-zA-Z0-9]/g, '_')} = input_A || input_B;\n`;
-                } else if (gn.type === "DELAY") {
+                } else if (gn.type === "XOR") {
+             cpp += ` bool ${gn.id.replace(/[^a-zA-Z0-9]/g, '_')} = input_A ^ input_B;\n`;
+            } else if (gn.type === "DELAY") {
                 cpp += ` delay(${gn.delay_ms}); // translated buffer tick wait\n`;
                 }
         });
